@@ -1,0 +1,370 @@
+---
+title: "Complement data for: A mosquito brain like a sieve: evaluating the memory of mosquito larvae"
+author: "Martin Dessart"
+date: "26/09/2023"
+output:
+  html_document:
+    toc: true
+    theme: united
+  pdf_document: default
+  word_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,fig.width=15,fig.height=8)
+```
+
+# 0) Setup - Data presentation
+
+
+```{r,echo=FALSE,warning=FALSE, message=FALSE}
+#librairies ---
+library(dplyr)
+library(car)
+library(ggeffects)
+library(ggplot2)
+library(DHARMa)
+library(ggpubr)
+library(lme4)
+library(emmeans)
+#rm(list=ls())
+set.seed(666) #Fix kernell
+setwd("/Users/martin/Documents/GitHub/Brain_Like_A_Sieve/1_Data/4_Grouped")
+sAll<-read.table("G2.csv", sep=";",header=T)
+```
+
+
+```{r,echo=FALSE,warning=FALSE, message=FALSE}
+sAll$ret<-as.character(sAll$ret)
+sAll$cat<-as.factor(sAll$cat)
+sAll$iti<-as.factor(sAll$iti)
+sAll$ID<-as.factor(sAll$ID)
+sAll$ret<-as.factor(sAll$ret)
+sAll$pck<-as.factor(sAll$pck)
+sAll$expe<-as.factor(sAll$expe)
+summary(sAll)
+c1<-"4 MIN"
+c2<-"30 MIN"
+c3<-"1 H"
+c4<-"2 H"
+c5<-"3 H"
+c6<-"24 H"
+levels(sAll$ret) <- c(c1,c2,c3,c4,c5,c6)
+```
+
+```{r,echo=FALSE,warning=FALSE, message=FALSE}
+## 2) A_ Apply threshold ----
+# a. Define the maximum vertical position to distinguish
+# between individuals who have not reacted and those who have reacted
+lowl1 = -10 #mm
+upl1 = +10 #mm
+
+# b. Define the threshold for being "too low" to dive due to
+# the physical constraints of our cuvette
+l1<- max(sAll$pos_y)-max(sAll$pos_y)/8
+
+# c. Create an interating "number" for each row per trial / ID / group
+rawAe<-sAll %>% group_by(ret,iti,ID,cat) %>% mutate(numbering = row_number()) %>% ungroup()
+
+# d. Create threshold: take "1" if individual is below the  threshold, "0" else
+scasAe<-rawAe %>% group_by(ret,iti,ID,cat) %>% 
+  mutate(threshold = case_when(numbering==min(numbering) & pos_y>l1 ~ 1,TRUE~0)) %>% ungroup()
+
+# e. Count thresholds and sum into "rep" variable
+sfilterAe<-scasAe %>% group_by(ret,iti,ID,cat) %>% 
+  summarise(rep=sum(threshold,na.rm=T),
+            dY=sum(-dY,na.rm = T),
+            pos_y=mean(pos_y,na.rm=T)) %>%  
+  filter(rep==0) %>% ungroup()
+
+# f. Split positions according to the limit previously assessed
+sposAe<-sfilterAe %>% 
+  mutate(slope=case_when(dY < lowl1 ~ "down",
+                         dY>upl1 ~ "up",
+                         dY >= lowl1 & dY <= upl1 ~ "flat"))
+
+# g. Extract and bind data
+s5<-sposAe %>% filter(slope=="up") %>% mutate(rep=1)
+s5b<-sposAe %>% filter(slope=="flat") %>% mutate(rep=0)
+stotAe<-bind_rows(s5,s5b)
+rm(s5,s5b,sfilterAe,scasAe,sposAe,rawAe) #remove useless df
+
+# h. Compare data between full df and df with rules
+srAe<-stotAe %>% 
+  group_by(ret,iti,cat) %>% 
+  summarise(rep=100*mean(rep,na.rm=TRUE))
+
+st1<-stotAe %>% filter(cat==11) %>% mutate(cat="Test")
+st2<-stotAe %>% filter(cat!=11) 
+st<-bind_rows(st1,st2)
+
+```
+
+# 1) Figure 2 GAM
+## GAM
+```{r,echo=FALSE,warning=FALSE, message=FALSE}
+sf3 <- st %>%
+  group_by(ret,cat) %>% 
+  summarise(dY=mean(dY,na.rm=T),
+            rep=mean(rep,na.rm=T)) %>% ungroup()
+st1<-sf3 %>% filter(ret==c1)
+st1r<-st2%>% filter(cat!="Test")
+st2<-sf3 %>% filter(ret==c2)
+st2r<-st2%>% filter(cat!="Test")
+st3<-sf3 %>% filter(ret==c3)
+st3r<-st3 %>% filter(cat!="Test")
+st4<-sf3 %>% filter(ret==c4)
+st4r<-st4%>% filter(cat!="Test")
+st5<-sf3 %>% filter(ret==c5)
+st5r<-st5%>% filter(cat!="Test")
+st6<-sf3 %>% filter(ret==c6)
+st6r<-st6%>% filter(cat!="Test")
+sf3bis<-sf3 %>% filter(cat!="Test")
+ggplot(NULL)+ 
+  geom_smooth(data=st1r,aes(y=dY,x=cat,group=1),colour="#07AB9D",method = "gam",
+              formula = y ~ s(x, bs = "bs",fx=FALSE,k=-1),se=F)+
+  geom_smooth(data=st2r,aes(y=dY,x=cat,group=1),colour="#1EA1F2",method = "gam",
+              formula = y ~ s(x, bs = "bs",fx=FALSE,k=-1),se=F)+
+  geom_smooth(data=st3r,aes(y=dY,x=cat,group=1),colour="#FFA437",method = "gam",
+              formula = y ~ s(x, bs = "bs",fx=FALSE,k=-1),se=F)+
+  geom_smooth(data=st4r,aes(y=dY,x=cat,group=1),colour="#C00000",method = "gam",
+              formula = y ~ s(x, bs = "bs",fx=FALSE,k=-1),se=F)+
+  geom_smooth(data=st5r,aes(y=dY,x=cat,group=1),colour="#7030A0",method = "gam",
+              formula = y ~ s(x, bs = "bs",fx=FALSE,k=-1),se=F)+
+  geom_smooth(data=st6r,aes(y=dY,x=cat,group=1),colour="#1113A4",method = "gam",
+              formula = y ~ s(x, bs = "bs",fx=FALSE,k=-1),se=F)+
+  geom_point(data=st1,aes(y=dY,x=cat),size=2,shape=15,color="#07AB9D")+ #BLEU VERT
+  geom_point(data=st2,aes(y=dY,x=cat),size=2,shape=15,color="#1EA1F2")+ #BLEU CTRL
+  geom_point(data=st3,aes(y=dY,x=cat),size=2,shape=15,color="#FFA437")+ #JAUNE
+  geom_point(data=st4,aes(y=dY,x=cat),size=2,shape=15,color="#C00000")+ #ROUGE
+  geom_point(data=st5,aes(y=dY,x=cat),size=2,shape=15,color="#7030A0")+ #VIOLET
+  geom_point(data=st6,aes(y=dY,x=cat),size=2,shape=15,color="#1113A4")+ #BLEU FONCE
+  geom_smooth(data=sf3bis,aes(y=dY,x=cat,group=1),colour="#444444",method = "gam",
+              formula = y ~ s(x, bs = "bs",fx=FALSE,k=-1))+
+  theme_classic() +
+  labs(y="Vertical Distance (mm)",x="Trial")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(plot.title = element_text(size=22,face = "bold"))+
+  theme(axis.text=element_text(size=20),
+        axis.title=element_text(size=20))+
+  scale_x_discrete(name ="Trial", 
+                   limits=c("1","2","3","4","5","6","7","8","9","10","Test"))
+
+
+
+```
+
+
+# 2) Figure 3 RETENTION
+
+## Plot
+```{r,echo=FALSE,warning=FALSE, message=FALSE}
+STTT<-st %>% 
+  filter(cat==1|cat==10|cat=="Test") %>% 
+  group_by(ret,iti,ID,cat) %>%
+  summarise(dY=mean(dY,na.rm = T),
+            rep=mean(rep,na.rm=T)) %>% ungroup()
+
+STTT$cat<-as.factor(STTT$cat)
+
+dae<-glm(dY~cat*ret, data=STTT)
+dx<-STTT %>% count(ret,cat)
+yv <- predict(dae,type="link",se.fit=TRUE)
+ydAE<-data.frame(yv$fit,yv$se.fit,STTT$cat,STTT$ret)
+yd2<-ydAE %>% rename(ret=STTT.ret) %>% rename(cat=STTT.cat)
+inv<-family(dae)$linkinv
+
+ggplot(STTT, aes(x=cat,y=dY))+
+  geom_pointrange(data=yd2,aes(x=cat,y=inv(yv.fit),ymin=inv(yv.fit-1.96*yv.se.fit), ymax=inv((yv.fit+1.96*yv.se.fit)),
+                     group=ret,color=ret),size=1)+
+  theme_classic() +
+  labs(y="Vertical Distance (mm)",x="Trial")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(plot.title = element_text(size=22,face = "bold"))+
+  theme(axis.text=element_text(size=20,color="black"),
+        axis.title=element_text(size=20,color="black"))+
+  scale_color_manual(values=c("#07AB9D","#1EA1F2","#FFA437","#C00000","#7030A0","#1113A4"))+
+  theme(legend.title = element_text(size=20,color="black"),
+        legend.text = element_text(size=20))+
+  guides(colour=guide_legend(title="Species"))+
+  theme(legend.position = "none",
+        strip.text = element_text(size = 18))+
+  stat_compare_means(comparisons = list(c("1","10"),c("1","Test")),
+                     method.args = list(alternative = "greater"),
+                     aes(label = ..p.signif..),
+                     bracket.size = 1,size=5)+
+      facet_wrap(~ret)
+```
+## Stats
+
+```{r,echo=FALSE,warning=FALSE, message=FALSE}
+STTTR1<-STTT %>% filter(ret=="4 MIN")
+mR1<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR1)
+Anova(mR1)
+emmeans(mR1, pairwise ~ cat,adjust="tukey")
+simR1 <- simulateResiduals(fittedModel = mR1, plot = T)
+
+STTTR2<-STTT %>% filter(ret=="30 MIN")
+mR2<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR2)
+Anova(mR2)
+emmeans(mR2, pairwise ~ cat,adjust="tukey")
+simR2 <- simulateResiduals(fittedModel = mR2, plot = T)
+
+STTTR3<-STTT %>% filter(ret=="1 H")
+mR3<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR3)
+Anova(mR3)
+emmeans(mR3, pairwise ~ cat,adjust="tukey")
+simR3 <- simulateResiduals(fittedModel = mR3, plot = T)
+
+STTTR4<-STTT %>% filter(ret=="2 H")
+mR4<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR4)
+Anova(mR4)
+emmeans(mR4, pairwise ~ cat,adjust="tukey")
+simR4 <- simulateResiduals(fittedModel = mR4, plot = T)
+
+STTTR5<-STTT %>% filter(ret=="3 H")
+mR5<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR5)
+Anova(mR5)
+emmeans(mR5, pairwise ~ cat,adjust="tukey")
+simR5 <- simulateResiduals(fittedModel = mR5, plot = T)
+
+STTTR6<-STTT %>% filter(ret=="24 H") %>% filter(iti=="2 min")
+mR6<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR6)
+Anova(mR6)
+emmeans(mR6, pairwise ~ cat,adjust="tukey")
+simR6 <- simulateResiduals(fittedModel = mR6, plot = T)
+
+```
+
+
+
+# 3) Figure 4 ITI VARIATION 
+```{r,echo=FALSE,warning=FALSE, message=FALSE}
+STTT<-st %>% 
+  filter(ret=="24 H") %>% 
+  filter(cat==1|cat==10|cat=="Test") %>% 
+  group_by(ret,iti,ID,cat) %>%
+  summarise(dY=mean(dY,na.rm = T),
+            rep=mean(rep,na.rm=T)) %>% ungroup()
+
+STTT$cat<-as.factor(STTT$cat)
+levels(STTT$iti)
+STTT<-STTT %>% mutate(iti = factor(iti, levels=c("2 min","5 min","10 min")))
+
+dae<-glm(dY~cat*iti, data=STTT)
+dx<-STTT %>% count(iti,cat)
+yv <- predict(dae,type="link",se.fit=TRUE)
+ydAE<-data.frame(yv$fit,yv$se.fit,STTT$cat,STTT$iti)
+yd2<-ydAE %>% rename(iti=STTT.iti) %>% rename(cat=STTT.cat)
+inv<-family(dae)$linkinv
+
+ggplot(STTT, aes(x=cat,y=dY))+
+  geom_pointrange(data=yd2,aes(x=cat,y=inv(yv.fit),ymin=inv(yv.fit-1.96*yv.se.fit), ymax=inv((yv.fit+1.96*yv.se.fit)),
+                     group=iti,color=iti),size=1)+
+  theme_classic() +
+  labs(y="Vertical Distance (mm)",x="Trial")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(plot.title = element_text(size=22,face = "bold"))+
+  theme(axis.text=element_text(size=20,color="black"),
+        axis.title=element_text(size=20,color="black"))+
+  scale_color_manual(values=c("#36465D","#53C5A4","#D62214"))+
+  theme(legend.title = element_text(size=20,color="black"),
+        legend.text = element_text(size=20))+
+  guides(colour=guide_legend(title="Species"))+
+  theme(legend.position = "none",
+        strip.text = element_text(size = 18))+
+  stat_compare_means(comparisons = list(c("1","10"),c("1","Test")),
+                     method.args = list(alternative = "greater"),
+                     aes(label = ..p.signif..),
+                     bracket.size = 1,size=5)+
+      facet_wrap(~iti)
+
+
+```
+
+## STATS
+
+```{r}
+STTTR1<-STTT %>% filter(iti=="2 min")
+mR1<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR1)
+simR1 <- simulateResiduals(fittedModel = mR1, plot = T)
+emmeans(mR1, pairwise ~ cat,adjust="tukey")
+
+STTTR2<-STTT %>% filter(iti=="5 min")
+mR2<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR2)
+simR2 <- simulateResiduals(fittedModel = mR2, plot = T)
+emmeans(mR2, pairwise ~ cat,adjust="tukey")
+
+STTTR3<-STTT %>% filter(iti=="10 min")
+mR3<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR3)
+simR3 <- simulateResiduals(fittedModel = mR3, plot = T)
+emmeans(mR3, pairwise ~ cat,adjust="tukey")
+
+```
+
+
+# 4) Supp Figure S1 T1 T2
+```{r,echo=FALSE,warning=FALSE, message=FALSE}
+ST2<-st %>% 
+  filter(ret=="24 H") %>% 
+  filter(cat==1|cat==2) %>% 
+  group_by(ret,iti,ID,cat) %>%
+  summarise(dY=mean(dY,na.rm = T),
+            rep=mean(rep,na.rm=T)) %>% ungroup()
+
+ST2$cat<-as.factor(ST2$cat)
+levels(ST2$iti)
+ST2<-ST2 %>% mutate(iti = factor(iti, levels=c("2 min","5 min","10 min")))
+
+dae<-glm(dY~cat*iti, data=ST2)
+dx<-ST2 %>% count(iti,cat)
+yv <- predict(dae,type="link",se.fit=TRUE)
+ydAE<-data.frame(yv$fit,yv$se.fit,ST2$cat,ST2$iti)
+yd2<-ydAE %>% rename(iti=ST2.iti) %>% rename(cat=ST2.cat)
+inv<-family(dae)$linkinv
+
+ggplot(ST2, aes(x=cat,y=dY))+
+  geom_pointrange(data=yd2,aes(x=cat,y=inv(yv.fit),ymin=inv(yv.fit-1.96*yv.se.fit), ymax=inv((yv.fit+1.96*yv.se.fit)),
+                     group=iti,color=iti),size=1)+
+  theme_classic() +
+  labs(y="Vertical Distance (mm)",x="Trial")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(plot.title = element_text(size=22,face = "bold"))+
+  theme(axis.text=element_text(size=20,color="black"),
+        axis.title=element_text(size=20,color="black"))+
+  scale_color_manual(values=c("#36465D","#53C5A4","#D62214"))+
+  theme(legend.title = element_text(size=20,color="black"),
+        legend.text = element_text(size=20))+
+  guides(colour=guide_legend(title="Species"))+
+  theme(legend.position = "none",
+        strip.text = element_text(size = 18))+
+  stat_compare_means(comparisons = list(c("1","2")),
+                     method.args = list(alternative = "greater"),
+                     aes(label = ..p.signif..),
+                     bracket.size = 1,size=5)+
+      facet_wrap(~iti)
+
+
+```
+
+## Stats
+
+```{r}
+mel1<-ST2 %>% filter(iti=="2 min")
+mR1<-lmerTest::lmer(dY~cat+(1|ID),data=mel1)
+simR1 <- simulateResiduals(fittedModel = mR1, plot = T)
+emmeans(mR1, pairwise ~ cat,adjust="tukey")
+
+mel2<-ST2 %>% filter(iti=="5 min")
+mR2<-lmerTest::lmer(dY~cat+(1|ID),data=mel2)
+simR2 <- simulateResiduals(fittedModel = mR2, plot = T)
+emmeans(mR2, pairwise ~ cat,adjust="tukey")
+
+mel3<-ST2 %>% filter(iti=="10 min")
+mR3<-lmerTest::lmer(dY~cat+(1|ID),data=mel3)
+simR3 <- simulateResiduals(fittedModel = mR3, plot = T)
+emmeans(mR3, pairwise ~ cat,adjust="tukey")
+
+```
+
+
+
