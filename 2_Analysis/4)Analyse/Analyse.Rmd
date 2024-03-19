@@ -103,7 +103,7 @@ st<-bind_rows(st1,st2)
 ## GAM
 ```{r,echo=FALSE,warning=FALSE, message=FALSE}
 sf3 <- st %>%
-  group_by(ret,cat) %>% 
+  group_by(ret,iti,cat) %>% 
   summarise(dY=mean(dY,na.rm=T),
             rep=mean(rep,na.rm=T)) %>% ungroup()
 st1<-sf3 %>% filter(ret==c1)
@@ -116,7 +116,7 @@ st4<-sf3 %>% filter(ret==c4)
 st4r<-st4%>% filter(cat!="Test")
 st5<-sf3 %>% filter(ret==c5)
 st5r<-st5%>% filter(cat!="Test")
-st6<-sf3 %>% filter(ret==c6)
+st6<-sf3 %>% filter(ret==c6) %>% filter(iti=="2 min")
 st6r<-st6%>% filter(cat!="Test")
 sf3bis<-sf3 %>% filter(cat!="Test")
 ggplot(NULL)+ 
@@ -156,7 +156,7 @@ ggplot(NULL)+
 
 # 2) Figure 3 RETENTION
 
-## Plot
+## Plot A
 ```{r,echo=FALSE,warning=FALSE, message=FALSE}
 STTT<-st %>% 
   filter(cat==1|cat==10|cat=="Test") %>% 
@@ -165,7 +165,7 @@ STTT<-st %>%
             rep=mean(rep,na.rm=T)) %>% ungroup()
 
 STTT$cat<-as.factor(STTT$cat)
-
+STTT<-STTT %>% filter(iti=="2 min")
 dae<-glm(dY~cat*ret, data=STTT)
 dx<-STTT %>% count(ret,cat)
 yv <- predict(dae,type="link",se.fit=TRUE)
@@ -194,7 +194,85 @@ ggplot(STTT, aes(x=cat,y=dY))+
                      bracket.size = 1,size=5)+
       facet_wrap(~ret)
 ```
-## Stats
+## Stats A
+
+```{r,echo=FALSE,warning=FALSE, message=FALSE}
+STTTR1<-STTT %>% filter(ret=="4 MIN")
+mR1<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR1)
+Anova(mR1)
+emmeans(mR1, pairwise ~ cat,adjust="tukey")
+simR1 <- simulateResiduals(fittedModel = mR1, plot = T)
+
+STTTR2<-STTT %>% filter(ret=="30 MIN")
+mR2<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR2)
+Anova(mR2)
+emmeans(mR2, pairwise ~ cat,adjust="tukey")
+simR2 <- simulateResiduals(fittedModel = mR2, plot = T)
+
+STTTR3<-STTT %>% filter(ret=="1 H")
+mR3<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR3)
+Anova(mR3)
+emmeans(mR3, pairwise ~ cat,adjust="tukey")
+simR3 <- simulateResiduals(fittedModel = mR3, plot = T)
+
+STTTR4<-STTT %>% filter(ret=="2 H")
+mR4<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR4)
+Anova(mR4)
+emmeans(mR4, pairwise ~ cat,adjust="tukey")
+simR4 <- simulateResiduals(fittedModel = mR4, plot = T)
+
+STTTR5<-STTT %>% filter(ret=="3 H")
+mR5<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR5)
+Anova(mR5)
+emmeans(mR5, pairwise ~ cat,adjust="tukey")
+simR5 <- simulateResiduals(fittedModel = mR5, plot = T)
+
+STTTR6<-STTT %>% filter(ret=="24 H") %>% filter(iti=="2 min")
+mR6<-lmerTest::lmer(dY~cat+(1|ID),data=STTTR6)
+Anova(mR6)
+emmeans(mR6, pairwise ~ cat,adjust="tukey")
+simR6 <- simulateResiduals(fittedModel = mR6, plot = T)
+
+```
+## Plot B
+```{r,echo=FALSE,warning=FALSE, message=FALSE}
+S2<-st %>% 
+  filter(cat=="Test") %>% 
+  group_by(ret,iti,ID,cat) %>%
+  summarise(dY=mean(dY,na.rm = T),
+            rep=mean(rep,na.rm=T)) %>% ungroup()
+
+S2<-S2 %>% filter(iti=="2 min")
+
+dae<-glm(dY~ret, data=S2)
+dx<-S2 %>% count(ret,cat)
+yv <- predict(dae,type="link",se.fit=TRUE)
+ydAE<-data.frame(yv$fit,yv$se.fit,S2$cat,S2$ret)
+yd2<-ydAE %>% rename(ret=S2.ret) %>% rename(cat=S2.cat)
+inv<-family(dae)$linkinv
+
+ggplot(S2,aes(x=ret,y=dY))+
+  geom_pointrange(data=yd2,aes(x=ret,y=inv(yv.fit),ymin=inv(yv.fit-1.96*yv.se.fit), ymax=inv((yv.fit+1.96*yv.se.fit)),
+                               group=ret,color=ret),size=1)+
+  theme_classic() +
+  labs(y="Vertical Distance (mm)",x="Trial")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(plot.title = element_text(size=22,face = "bold"))+
+  theme(axis.text=element_text(size=20,color="black"),
+        axis.title=element_text(size=20,color="black"))+
+  scale_color_manual(values=c("#07AB9D","#1EA1F2","#FFA437","#C00000","#7030A0","#1113A4"))+
+  theme(legend.title = element_text(size=20,color="black"),
+        legend.text = element_text(size=20))+
+  guides(colour=guide_legend(title="Species"))+
+  theme(legend.position = "none",
+        strip.text = element_text(size = 18))+
+  stat_compare_means(comparisons = list(c("3 H","2 H"),c("3 H","1 H"),c("3 H","30 MIN"),c("3 H","4 MIN"),c("3 H","24 H")),
+                     method.args = list(alternative = "greater"),
+                     aes(label = ..p.signif..),
+                     bracket.size = 1,size=5)
+
+```
+## Stats B
 
 ```{r,echo=FALSE,warning=FALSE, message=FALSE}
 STTTR1<-STTT %>% filter(ret=="4 MIN")
@@ -365,6 +443,3 @@ simR3 <- simulateResiduals(fittedModel = mR3, plot = T)
 emmeans(mR3, pairwise ~ cat,adjust="tukey")
 
 ```
-
-
-
